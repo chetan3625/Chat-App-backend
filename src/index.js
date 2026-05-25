@@ -7,6 +7,7 @@ const path = require('path');
 
 const connectDB = require('./config/db');
 const setupSocket = require('./socket');
+const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const chatRoutes = require('./routes/chats');
@@ -24,6 +25,7 @@ async function start() {
   app.use(express.json());
   app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
+  app.use('/api/health', healthRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/chats', chatRoutes);
