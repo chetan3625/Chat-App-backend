@@ -76,5 +76,15 @@ exports.reactToMessage = async (req, res) => {
 
   await message.save();
 
+  if (req.io) {
+    const payload = {
+      messageId: message._id.toString(),
+      conversationId: message.conversationId.toString(),
+      reactions: message.reactions,
+    };
+    req.io.to(message.senderId.toString()).emit('message_reaction_update', payload);
+    req.io.to(message.receiverId.toString()).emit('message_reaction_update', payload);
+  }
+
   return res.json({ message });
 };

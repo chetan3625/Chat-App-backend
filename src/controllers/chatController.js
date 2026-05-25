@@ -67,8 +67,15 @@ exports.findOrCreateConversation = async (req, res) => {
       select: 'content createdAt senderId receiverId',
     });
 
+  const summary = buildConversationSummary(conversation, req.user.userId);
+
+  if (req.io) {
+    const targetSummary = buildConversationSummary(conversation, targetUserId);
+    req.io.to(targetUserId).emit('conversation_created', { conversation: targetSummary });
+  }
+
   return res.json({
-    conversation: buildConversationSummary(conversation, req.user.userId),
+    conversation: summary,
   });
 };
 

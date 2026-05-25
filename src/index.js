@@ -19,7 +19,11 @@ async function start() {
   const app = express();
   const server = http.createServer(app);
 
-  setupSocket(server);
+  const io = setupSocket(server);
+  app.use((req, _res, next) => {
+    req.io = io;
+    next();
+  });
 
   app.use(cors({ origin: '*' }));
   app.use(express.json());
