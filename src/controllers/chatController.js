@@ -31,6 +31,47 @@ function buildConversationSummary(conversation, currentUserId) {
   };
 }
 
+exports.findOrCreateConversation = async (req, res) => {
+  const targetUserId = req.params.userId?.toString();
+
+  if (!targetUserId) {
+    return res.status(400).json({ message: 'User id is required.' });
+  }
+
+  if (targetUserId === req.user.userId) {
+    return res.status(400).json({ message: 'You cannot start a chat with yourself.' });
+  }
+
+  const targetUser = await User.findById(targetUserId);
+  if (!targetUser) {
+    return res.status(404).json({ message: 'User not found.' });
+  }
+
+  let conversation = await Conversation.findOne({
+    participants: { $all: [req.user.userId, targetUserId], $size: 2 },
+  });
+
+  if (!conversation) {
+    conversation = await Conversation.create({
+      participants: [req.user.userId, targetUserId],
+    });
+  }
+
+  conversation = await Conversation.findById(conversation._id)
+    .populate({
+      path: 'participants',
+      select: 'name username phone avatarUrl status isOnline lastSeen',
+    })
+    .populate({
+      path: 'lastMessage',
+      select: 'content createdAt senderId receiverId',
+    });
+
+  return res.json({
+    conversation: buildConversationSummary(conversation, req.user.userId),
+  });
+};
+
 exports.getConversations = async (req, res) => {
   const userId = req.user.userId;
 
