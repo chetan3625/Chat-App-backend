@@ -112,6 +112,11 @@ function setupSocket(server) {
         reactions: message.reactions,
       };
 
+      console.log(`Socket [send_message]: from ${socket.userId} to ${receiverId}`);
+      const receiverRoom = io.sockets.adapter.rooms.get(receiverId.toString());
+      const numClients = receiverRoom ? receiverRoom.size : 0;
+      console.log(`Socket [send_message]: Sending payload to room ${receiverId.toString()} (active clients: ${numClients})`);
+
       io.to(conversation._id.toString()).emit('message_received', payload);
       io.to(socket.userId.toString()).emit('message_received', payload);
       io.to(receiverId.toString()).emit('message_received', payload);
