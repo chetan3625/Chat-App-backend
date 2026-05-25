@@ -14,23 +14,35 @@ function setupSocket(server) {
 
   io.use((socket, next) => {
     const authHeader = socket.handshake.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    let token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+
+    if (!token && socket.handshake.auth) {
+      token = socket.handshake.auth.token;
+    }
+
+    if (!token && socket.handshake.query) {
+      token = socket.handshake.query.token;
+    }
 
     if (!token) {
+      console.log('Socket connection failed: No token provided');
       return next(new Error('Unauthorized'));
     }
 
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       socket.userId = payload.userId;
+      console.log(`Socket authenticated user: ${socket.userId}`);
       next();
     } catch (error) {
-      next(new Error('Unauthorized'));
+      console.log(`Socket authentication failed for token: ${error.message}`);
+      return next(new Error('Unauthorized'));
     }
   });
 
   io.on('connection', (socket) => {
     socket.join(socket.userId);
+    console.log(`Socket connected: ${socket.id} (User: ${socket.userId})`);
 
     const broadcastPresence = async (isOnline) => {
       await User.findByIdAndUpdate(socket.userId, {
@@ -185,6 +197,7 @@ function setupSocket(server) {
     });
 
     socket.on('disconnect', async () => {
+      console.log(`Socket disconnected: ${socket.id} (User: ${socket.userId})`);
       await broadcastPresence(false);
     });
   });
