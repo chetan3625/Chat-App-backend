@@ -18,6 +18,7 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
     content: { type: String, required: true },
+    clientMessageId: { type: String, default: null },
     type: { type: String, default: 'text' },
     isRead: { type: Boolean, default: false },
     status: {
@@ -34,6 +35,14 @@ const messageSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  },
+);
+
+messageSchema.index(
+  { senderId: 1, clientMessageId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { clientMessageId: { $type: 'string' } },
   },
 );
 

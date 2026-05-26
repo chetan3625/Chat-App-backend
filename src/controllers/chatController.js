@@ -23,9 +23,16 @@ function buildConversationSummary(conversation, currentUserId) {
     lastMessage: conversation.lastMessage
       ? {
           _id: conversation.lastMessage._id,
+          conversationId: conversation._id,
           content: conversation.lastMessage.content,
           createdAt: conversation.lastMessage.createdAt,
           senderId: conversation.lastMessage.senderId,
+          receiverId: conversation.lastMessage.receiverId,
+          clientMessageId: conversation.lastMessage.clientMessageId,
+          isRead: conversation.lastMessage.isRead,
+          status: conversation.lastMessage.status,
+          type: conversation.lastMessage.type,
+          reactions: conversation.lastMessage.reactions,
         }
       : null,
   };
@@ -64,7 +71,7 @@ exports.findOrCreateConversation = async (req, res) => {
     })
     .populate({
       path: 'lastMessage',
-      select: 'content createdAt senderId receiverId',
+      select: 'content createdAt senderId receiverId clientMessageId isRead status type reactions',
     });
 
   const summary = buildConversationSummary(conversation, req.user.userId);
@@ -89,7 +96,7 @@ exports.getConversations = async (req, res) => {
     })
     .populate({
       path: 'lastMessage',
-      select: 'content createdAt senderId receiverId',
+      select: 'content createdAt senderId receiverId clientMessageId isRead status type reactions',
     })
     .sort({ updatedAt: -1 });
 

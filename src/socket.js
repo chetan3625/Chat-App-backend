@@ -4,6 +4,12 @@ const { Server } = require('socket.io');
 const Conversation = require('./models/Conversation');
 const Message = require('./models/Message');
 const User = require('./models/User');
+const {
+  broadcastMessage,
+  broadcastReaction,
+  createOutgoingMessage,
+  toggleMessageReaction,
+} = require('./services/messageRealtime');
 
 function setupSocket(server) {
   const io = new Server(server, {
@@ -70,56 +76,58 @@ function setupSocket(server) {
       });
     });
 
-    socket.on('send_message', async ({ conversationId, receiverId, content }) => {
-      if (!receiverId || !content || !content.trim()) {
-        return;
-      }
-
-      let conversation = conversationId
-        ? await Conversation.findById(conversationId)
-        : null;
-
-      if (!conversation) {
-        conversation = await Conversation.create({
-          participants: [socket.userId, receiverId],
+    socket.on('send_message', async (payload, ack) => {
+      try {
+        const { conversationId, receiverId, content, clientMessageId } = payload || {};
+        const { message } = await createOutgoingMessage({
+          conversationId,
+          senderId: socket.userId,
+          receiverId,
+          content,
+          clientMessageId,
         });
+
+        console.log(`Socket [send_message]: from ${socket.userId} to ${receiverId}`);
+        const receiverRoom = io.sockets.adapter.rooms.get(receiverId.toString());
+        const numClients = receiverRoom ? receiverRoom.size : 0;
+        console.log(`Socket [send_message]: Sending payload to room ${receiverId.toString()} (active clients: ${numClients})`);
+
+        const messagePayload = broadcastMessage(io, message);
+        if (typeof ack === 'function') {
+          ack({ ok: true, message: messagePayload });
+        }
+      } catch (error) {
+        console.log(`Socket [send_message] failed: ${error.message}`);
+        if (typeof ack === 'function') {
+          ack({
+            ok: false,
+            message: error.message || 'Unable to send message.',
+          });
+        }
       }
+    });
 
-      const message = await Message.create({
-        conversationId: conversation._id,
-        senderId: socket.userId,
-        receiverId,
-        content: content.trim(),
-        type: 'text',
-        status: 'sent',
-        isRead: false,
-      });
-
-      conversation.lastMessage = message._id;
-      conversation.updatedAt = new Date();
-      await conversation.save();
-
-      const payload = {
-        _id: message._id,
-        conversationId: conversation._id.toString(),
-        senderId: message.senderId.toString(),
-        receiverId: message.receiverId.toString(),
-        content: message.content,
-        type: message.type,
-        createdAt: message.createdAt,
-        isRead: message.isRead,
-        status: message.status,
-        reactions: message.reactions,
-      };
-
-      console.log(`Socket [send_message]: from ${socket.userId} to ${receiverId}`);
-      const receiverRoom = io.sockets.adapter.rooms.get(receiverId.toString());
-      const numClients = receiverRoom ? receiverRoom.size : 0;
-      console.log(`Socket [send_message]: Sending payload to room ${receiverId.toString()} (active clients: ${numClients})`);
-
-      io.to(conversation._id.toString()).emit('message_received', payload);
-      io.to(socket.userId.toString()).emit('message_received', payload);
-      io.to(receiverId.toString()).emit('message_received', payload);
+    socket.on('react_to_message', async (payload, ack) => {
+      try {
+        const { messageId, emoji } = payload || {};
+        const message = await toggleMessageReaction({
+          messageId,
+          emoji,
+          userId: socket.userId,
+        });
+        const reactionPayload = broadcastReaction(io, message);
+        if (typeof ack === 'function') {
+          ack({ ok: true, message: reactionPayload.message });
+        }
+      } catch (error) {
+        console.log(`Socket [react_to_message] failed: ${error.message}`);
+        if (typeof ack === 'function') {
+          ack({
+            ok: false,
+            message: error.message || 'Unable to update reaction.',
+          });
+        }
+      }
     });
 
     const updateMessageStatus = async (messageId, status, receiverSocketId) => {

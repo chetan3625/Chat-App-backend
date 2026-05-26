@@ -1,5 +1,11 @@
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const {
+  broadcastMessage,
+  broadcastReaction,
+  createOutgoingMessage,
+  toggleMessageReaction,
+} = require('../services/messageRealtime');
 
 exports.getMessages = async (req, res) => {
   const conversation = await Conversation.findOne({
@@ -41,50 +47,47 @@ exports.markMessagesRead = async (req, res) => {
   });
 };
 
+exports.sendMessage = async (req, res) => {
+  try {
+    const { conversationId, receiverId, content, clientMessageId } = req.body;
+    const { message } = await createOutgoingMessage({
+      conversationId,
+      senderId: req.user.userId,
+      receiverId,
+      content,
+      clientMessageId,
+    });
+
+    const payload = req.io
+      ? broadcastMessage(req.io, message)
+      : message;
+
+    return res.json({ message: payload });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || 'Unable to send message.',
+    });
+  }
+};
+
 exports.reactToMessage = async (req, res) => {
   const { emoji } = req.body;
 
-  if (!emoji) {
-    return res.status(400).json({ message: 'Emoji is required.' });
+  try {
+    const message = await toggleMessageReaction({
+      messageId: req.params.id,
+      userId: req.user.userId,
+      emoji,
+    });
+
+    const payload = req.io
+      ? broadcastReaction(req.io, message).message
+      : message;
+
+    return res.json({ message: payload });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || 'Unable to update reaction.',
+    });
   }
-
-  const message = await Message.findById(req.params.id);
-  if (!message) {
-    return res.status(404).json({ message: 'Message not found.' });
-  }
-
-  const userId = req.user.userId.toString();
-  if (
-    message.senderId.toString() !== userId &&
-    message.receiverId.toString() !== userId
-  ) {
-    return res.status(403).json({ message: 'You do not have access to this message.' });
-  }
-
-  const existingReactionIndex = message.reactions.findIndex(
-    (item) => item.userId.toString() === userId && item.emoji === emoji,
-  );
-
-  if (existingReactionIndex >= 0) {
-    message.reactions.splice(existingReactionIndex, 1);
-  } else {
-    message.reactions = message.reactions.filter(
-      (item) => item.userId.toString() !== userId,
-    );
-    message.reactions.push({ emoji, userId: req.user.userId });
-  }
-
-  await message.save();
-
-  if (req.io) {
-    const payload = {
-      messageId: message._id.toString(),
-      conversationId: message.conversationId.toString(),
-      reactions: message.reactions,
-    };
-    req.io.to(message.senderId.toString()).emit('message_reaction_update', payload);
-    req.io.to(message.receiverId.toString()).emit('message_reaction_update', payload);
-  }
-
-  return res.json({ message });
 };
